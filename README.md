@@ -1,165 +1,115 @@
 # Toko Bangunan ERP
 
-Sistem manajemen toko bangunan berbasis web dibangun dengan **Next.js 16**, **MongoDB**, dan **TypeScript** — dibuat sebagai portfolio project.
+Sistem manajemen toko bangunan berbasis web: **Next.js 16**, **MongoDB**, **TypeScript** — portfolio project.
+
+**Dokumentasi lanjutan:** [Setup & troubleshooting](docs/SETUP.md) · [Arsitektur](docs/ARCHITECTURE.md) · [API HTTP](docs/API.md) · [Panduan operator](docs/USER_GUIDE.md) · [Kontribusi](CONTRIBUTING.md)
 
 ## Demo
 
-- **URL**: _(deploy ke Vercel setelah setup MongoDB Atlas)_
+- **URL**: _(setelah deploy, contoh Vercel + MongoDB Atlas)_
 - **Admin**: `admin@toko.test` / `admin123`
-- **Kasir**: `kasir@toko.test` / `kasir123`
+- **Kasir**: `kasir@toko.test` / `kasir123`  
+  (sama dengan user yang dibuat `pnpm seed`, lihat [scripts/seed.ts](scripts/seed.ts))
 
----
+## Fitur (ringkas)
 
-## Fitur
+| Area | Modul | Deskripsi |
+|------|--------|-----------|
+| **Akses** | Auth & RBAC | Login NextAuth v5 (credentials + JWT). Role `ADMIN` dan `KASIR`. User nonaktif ditolak login. |
+| **Operasional** | Kasir / POS | Pencarian produk (nama/SKU/barcode), keranjang, diskon (batas kasir), pajak, tunai & kredit, pelanggan. Kasir wajib shift terbuka sebelum jual. |
+| | Invoice | Daftar & detail cetak (print / PDF dari browser). Nomor invoice race-safe. |
+| | Pembelian | Penerimaan dari supplier; stok naik; hutang (admin). |
+| | Stok | Daftar, filter low-stock, mutasi IN/OUT, penyesuaian ber alasan (admin). |
+| | Piutang / Hutang | Piutang penjualan kredit; hutang ke supplier (admin). |
+| | Kas & Shift | Buka/tutup shift kasir; riwayat (admin lihat global). |
+| **Master** | Data referensi | Kategori, Satuan, Supplier, Produk (termasuk barcode), Pelanggan — mayoritas mutasi oleh **admin**. |
+| **Pengaturan** | Toko | Pajak default & batas diskon kasir. |
+| | Pengguna | Manajemen user & role (admin). |
+| | Audit | Log mutasi penting ([`writeAuditLog`](src/lib/audit.ts)). |
+| **Analisis** | Dashboard | KPI, grafik, top produk. |
+| | Laporan | Filter periode, tabel penjualan; export CSV penjualan (lihat [docs/API.md](docs/API.md)). |
 
-| Modul | Deskripsi |
-|-------|-----------|
-| **Auth & RBAC** | Login/logout, 2 role: `ADMIN` & `KASIR`, proteksi route via NextAuth v5 |
-| **POS / Kasir** | Cari produk by nama/SKU, keranjang, diskon, hitung kembalian, keyboard shortcut (F2) |
-| **Invoice** | Auto-generate `INV/YYYY/MM/0001`, detail invoice printable (Ctrl+P → Save as PDF) |
-| **Pembelian** | Form penerimaan barang dari supplier, stok otomatis bertambah |
-| **Manajemen Stok** | Daftar stok, filter low-stock, riwayat mutasi IN/OUT per produk |
-| **Dashboard** | KPI hari ini, grafik penjualan 7 hari (Recharts), top 5 produk |
-| **Laporan** | Laporan penjualan dengan filter tanggal + export CSV |
-| **Master Data** | CRUD Kategori, Satuan, Supplier, Produk |
+### Peran (RBAC)
 
----
+- **ADMIN**: semua menu termasuk Pembelian, Piutang, Hutang, Master, Pengaturan, Laporan.
+- **KASIR**: Dashboard, POS, Invoice, Stok, Kas & Shift — tidak mengelola master/pembelian/laporan/admin.  
+  Detail di [`src/lib/rbac.ts`](src/lib/rbac.ts) (`requireAdmin`, `requireAuth`).
 
-## Tech Stack
+## Tech stack
 
-- **Framework**: Next.js 16.2.4 (App Router, Server Components, Server Actions)
-- **Language**: TypeScript
-- **Database**: MongoDB + Mongoose 9
-- **Auth**: NextAuth v5 (Auth.js) — credentials + JWT
-- **UI**: Tailwind CSS v4 + shadcn/ui + lucide-react
-- **Forms**: react-hook-form + Zod
-- **Charts**: Recharts
-- **Data fetching**: SWR (POS autocomplete)
+- Next.js 16 (App Router, Server Components, Server Actions), React 19, TypeScript  
+- MongoDB + Mongoose 9 · NextAuth v5  
+- Tailwind v4, shadcn/ui, react-hook-form + Zod, Recharts, SWR (autocomplete POS)
 
----
-
-## Arsitektur
+## Arsitektur (ringkas)
 
 ```
-Browser (React Client)
-    │
-    ├── Server Components ──► Mongoose ──► MongoDB
-    │   (halaman, read)
-    │
-    ├── Server Actions ──────► Mongoose ──► MongoDB
-    │   (mutasi/write + Zod validate)
-    │
-    └── Route Handlers (/api)
-        ├── /api/products/search  ← SWR POS autocomplete
-        └── /api/reports/sales    ← CSV export stream
+Browser
+  ├── Server Components → Mongoose → MongoDB (baca)
+  ├── Server Actions    → Mongoose → MongoDB (tulis + validasi Zod)
+  └── Route handlers /api/* (autocomplete, health, export CSV, NextAuth)
 ```
 
-### Poin Teknis Kunci
+Transaksi penjualan/pembelian memakai **MongoDB session + `withTransaction`**; nomor dokumen lewat koleksi **Counter** (`$inc` atomik). Penjelasan dan diagram: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Transaksi Atomik MongoDB** — dipakai di POS (`createSale`) dan Pembelian (`createPurchase`):
+## Cara menjalankan
 
-```typescript
-const session = await mongoose.startSession();
-await session.withTransaction(async () => {
-  // 1. Generate invoiceNumber race-safe via counter doc ($inc atomic)
-  const counter = await Counter.findOneAndUpdate(
-    { _id: "invoice-2026-04" },
-    { $inc: { seq: 1 } },
-    { upsert: true, new: true, session }
-  );
-  // 2. Insert SaleOrder
-  // 3. Decrement Product.stock ($inc: { stock: -qty })
-  // 4. Insert StockMovement log
-  // → Jika salah satu gagal, semua rollback. Stok tidak pernah "korupsi".
-});
-```
-
-**Race-safe Invoice Number**: `Counter.findOneAndUpdate` + `$inc` di dalam transaksi yang sama memastikan tidak ada dua kasir bisa mendapat nomor invoice yang sama meski submit bersamaan.
-
----
-
-## Cara Menjalankan
-
-### Prerequisites
-- Node.js 18+, pnpm
-- MongoDB (lokal atau Atlas)
-
-### Setup
+**Prasyarat:** Node.js 18+, pnpm, MongoDB (lokal atau Atlas).
 
 ```bash
-# 1. Clone & install
 git clone <repo-url>
 cd erp
 pnpm install
-
-# 2. Konfigurasi environment
 cp .env.local.example .env.local
-# Edit MONGODB_URI sesuai setup Anda
-
-# 3. Seed data demo (50 produk, 5 supplier, 30 transaksi)
-pnpm seed
-
-# 4. Jalankan development server
+# Edit .env.local — setidaknya MONGODB_URI dan AUTH_SECRET (≥32 karakter)
+pnpm seed    # HATI-HATI: mengosongkan DB lalu mengisi data demo — jangan di produksi
 pnpm dev
 ```
 
 Buka [http://localhost:3000](http://localhost:3000).
 
-### Environment Variables
+### Quality checks
 
-```env
-MONGODB_URI=mongodb://localhost:27017/erp-toko-bangunan
-AUTH_SECRET=your-super-secret-key-min-32-chars
-NEXTAUTH_URL=http://localhost:3000
+```bash
+pnpm test              # Vitest
+curl -s http://localhost:3000/api/health   # { "ok": true, "db": "connected" } jika DB jalan
 ```
 
----
+### Environment variables
 
-## Struktur Folder
+| Variabel | Keterangan |
+|----------|------------|
+| `MONGODB_URI` | Connection string MongoDB |
+| `AUTH_SECRET` | Secret NextAuth; panjang aman, jangan di-commit |
+| `NEXTAUTH_URL` | Origin aplikasi (dev: `http://localhost:3000`) |
+
+Contoh lengkap: [.env.local.example](.env.local.example)
+
+## Struktur folder
 
 ```
+app/
+  (auth)/login/
+  (dashboard)/     # halaman ERP (pos, invoice, stok, laporan, pengaturan, …)
+  api/               # NextAuth, health, products/search, customers/search, reports/sales
 src/
-  app/
-    (auth)/login/          ← Halaman login
-    (dashboard)/           ← Layout sidebar + semua halaman
-      pos/                 ← Kasir / POS
-      invoice/[id]/        ← Detail invoice printable
-      pembelian/           ← Form pembelian
-      stok/                ← Manajemen stok
-      laporan/             ← Laporan + export CSV
-      produk/ kategori/ satuan/ supplier/
-    api/
-      products/search/     ← SWR autocomplete
-      reports/sales/       ← CSV stream
-  lib/       ← db.ts, auth.ts, rbac.ts, utils.ts
-  models/    ← Mongoose schemas
-  actions/   ← Server Actions (sale, purchase, product, ...)
-  schemas/   ← Zod schemas (shared client & server)
-  components/← UI components
+  actions/           # Server Actions per domain
+  components/       # UI + client widgets
+  lib/               # db, auth, rbac, audit, utils, …
+  models/            # skema Mongoose
+  schemas/           # Zod
 scripts/
-  seed.ts    ← Data demo realistis
+  seed.ts            # reset DB + seed demo
 ```
 
----
+## Future work
 
-## Future Work
-
-Fitur yang sengaja tidak diimplementasikan di MVP ini (akan ditambahkan iterasi berikutnya):
-
-- **Docker** — `Dockerfile` + `docker-compose.yml` (mongo service) → 1 jam, ROI tinggi
-- **Redis** — Cache dashboard aggregation pipeline
-- **BullMQ** — Async jobs: generate laporan PDF mingguan, notifikasi low-stock
-- **Express microservice** — Pisahkan Reports Service sebagai API terpisah
+- Docker (`Dockerfile`, `docker-compose` dengan MongoDB)
+- Cache (Redis) untuk agregasi dashboard; antrean kerja (BullMQ) untuk export/PDF besar
 - Multi-cabang / multi-gudang
-- Akuntansi (COA, jurnal otomatis, neraca, laba rugi)
-- Hutang/Piutang & pembayaran berkala
-- Retur penjualan/pembelian & void invoice
-- Surat jalan & manajemen pengiriman
-- Quotation / Sales Order workflow
-
-> Catatan: Redis, BullMQ, dan Express adalah bagian dari stack yang akan diadopsi pada iterasi berikutnya untuk menangani async jobs (generate laporan PDF, low-stock alert queue, export besar) — selaras dengan best practices arsitektur microservice.
-
----
+- Akuntansi (COA, jurnal, laporan keuangan)
+- Retur & void transaksi; quotation / SO workflow; surat jalan
+- Route API tambahan untuk export laporan yang belum tersedia (lihat catatan di [docs/API.md](docs/API.md))
 
 ## License
 
