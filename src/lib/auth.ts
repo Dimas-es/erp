@@ -1,9 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { connectDB } from "./db";
-import User from "@/src/models/User";
-import bcrypt from "bcryptjs";
 
+/** DB/Mongoose are loaded only inside `authorize` (Node) so middleware/proxy stays Edge-safe. */
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
@@ -15,11 +13,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
+        const [{ connectDB }, { default: User }, bcrypt] = await Promise.all([
+          import("./db"),
+          import("@/src/models/User"),
+          import("bcryptjs"),
+        ]);
         await connectDB();
         const user = await User.findOne({ email: credentials.email });
         if (!user) return null;
 
-        const valid = await bcrypt.compare(
+        const valid = await bcrypt.default.compare(
           credentials.password as string,
           user.passwordHash
         );
