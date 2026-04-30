@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import { getSaleOrderById } from "@/src/actions/sale";
 import { formatRupiah, terbilangRupiah } from "@/src/lib/utils";
+import { auth } from "@/src/lib/auth";
+import { getRole } from "@/src/lib/rbac";
+import { ReceivablePayForm } from "@/src/components/receivable-pay-form";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import { Separator } from "@/src/components/ui/separator";
@@ -15,7 +18,14 @@ export default async function InvoiceDetailPage({
   const order = await getSaleOrderById(invoiceId);
   if (!order) notFound();
 
-  const isPaid = order.paid >= order.total;
+  const session = await auth();
+  const isAdmin = getRole(session) === "ADMIN";
+  const paymentStatus = order.paymentStatus ?? (order.paid >= order.total ? "LUNAS" : "BELUM_LUNAS");
+  const balanceDue =
+    paymentStatus === "BELUM_LUNAS"
+      ? (order.balanceDue ?? Math.max(0, order.total - order.paid))
+      : 0;
+  const isPaid = paymentStatus === "LUNAS" || balanceDue <= 0;
 
   return (
     <div>
@@ -26,6 +36,9 @@ export default async function InvoiceDetailPage({
           total={order.total}
           customerName={order.customer?.name}
         />
+        {isAdmin && !isPaid && (
+          <ReceivablePayForm saleId={invoiceId} balanceDue={balanceDue} />
+        )}
       </div>
 
       {/* Invoice Print Area */}
@@ -111,7 +124,7 @@ export default async function InvoiceDetailPage({
                 {format(new Date(order.createdAt), "d MMMM yyyy, HH:mm", { locale: id })}
               </p>
             </div>
-            {isPaid && (
+            {isPaid ? (
               <span
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
                 style={{
@@ -125,6 +138,17 @@ export default async function InvoiceDetailPage({
                   style={{ background: "hsl(142 71% 45%)" }}
                 />
                 LUNAS
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
+                style={{
+                  background: "hsl(38 92% 50% / 0.15)",
+                  color: "hsl(32 80% 32%)",
+                  border: "1px solid hsl(38 80% 45% / 0.4)",
+                }}
+              >
+                PIUTANG
               </span>
             )}
           </div>
@@ -235,6 +259,12 @@ export default async function InvoiceDetailPage({
                 <span>Kembalian</span>
                 <span className="tabular-nums">{formatRupiah(order.change)}</span>
               </div>
+              {!isPaid && balanceDue > 0 && (
+                <div className="flex justify-between text-amber-800 font-semibold pt-1">
+                  <span>Sisa piutang</span>
+                  <span className="tabular-nums">{formatRupiah(balanceDue)}</span>
+                </div>
+              )}
             </div>
           </div>
 

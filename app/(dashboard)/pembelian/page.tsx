@@ -16,6 +16,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Badge } from "@/src/components/ui/badge";
 import { PurchaseForm } from "@/src/components/purchase-form";
+import { SupplierPayForm } from "@/src/components/supplier-pay-form";
 
 export default async function PembelianPage() {
   await requireAdmin();
@@ -62,6 +63,7 @@ export default async function PembelianPage() {
                   <TableHead>Supplier</TableHead>
                   <TableHead className="text-center">Item</TableHead>
                   <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Sisa hutang</TableHead>
                   <TableHead>Dibuat Oleh</TableHead>
                 </TableRow>
               </TableHeader>
@@ -80,6 +82,12 @@ export default async function PembelianPage() {
                     </TableCell>
                     <TableCell className="text-right font-semibold">
                       {formatRupiah(o.total)}
+                    </TableCell>
+                    <TableCell className="text-right align-top text-sm">
+                      <div className="font-medium text-amber-800 tabular-nums">
+                        {formatRupiah(o.balanceDue)}
+                      </div>
+                      <SupplierPayForm purchaseId={o._id} balanceDue={o.balanceDue} />
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {o.createdByName}
