@@ -47,6 +47,7 @@ export default async function ProdukPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>SKU</TableHead>
+                  <TableHead>Barcode</TableHead>
                   <TableHead>Nama Produk</TableHead>
                   <TableHead>Kategori</TableHead>
                   <TableHead>Satuan</TableHead>
@@ -64,6 +65,9 @@ export default async function ProdukPage() {
                     <TableRow key={p._id}>
                       <TableCell>
                         <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{p.sku}</code>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {(p as { barcode?: string }).barcode || "—"}
                       </TableCell>
                       <TableCell className="font-medium">{p.name}</TableCell>
                       <TableCell>

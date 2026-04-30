@@ -36,6 +36,7 @@ interface Product {
   sellPrice: number;
   stock: number;
   minStock: number;
+  barcode?: string;
 }
 
 interface ProductFormProps {
@@ -99,9 +100,18 @@ export function ProductForm({ categories, units, product, mode = "create" }: Pro
                 <Input id="sku" name="sku" placeholder="BRG-001" defaultValue={product?.sku} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="name">Nama Produk</Label>
-                <Input id="name" name="name" placeholder="Semen Portland 50kg" defaultValue={product?.name} required />
+                <Label htmlFor="barcode">Barcode (opsional)</Label>
+                <Input
+                  id="barcode"
+                  name="barcode"
+                  placeholder="Scan / ketik"
+                  defaultValue={product?.barcode ?? ""}
+                />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="name">Nama Produk</Label>
+              <Input id="name" name="name" placeholder="Semen Portland 50kg" defaultValue={product?.name} required />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

@@ -16,6 +16,9 @@ import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
 import { StockFilter } from "@/src/components/stock-filter";
 import { ArrowDown, ArrowUp } from "lucide-react";
+import { auth } from "@/src/lib/auth";
+import { getRole } from "@/src/lib/rbac";
+import { StockAdjustDialog } from "@/src/components/stock-adjust-dialog";
 
 interface SearchParams {
   search?: string;
@@ -31,6 +34,8 @@ export default async function StokPage({
 }) {
   const sp = await searchParams;
   const isMovementView = sp.view === "movement";
+  const session = await auth();
+  const isAdmin = getRole(session) === "ADMIN";
 
   const [{ products }, { movements }] = await Promise.all([
     getStockList({
@@ -50,6 +55,16 @@ export default async function StokPage({
           <p className="text-muted-foreground">Monitor stok dan riwayat mutasi produk</p>
         </div>
         <div className="flex gap-2">
+          {isAdmin && !isMovementView && (
+            <StockAdjustDialog
+              products={products.map((p) => ({
+                _id: p._id,
+                sku: p.sku,
+                name: p.name,
+                stock: p.stock,
+              }))}
+            />
+          )}
           <Button variant={!isMovementView ? "default" : "outline"} size="sm" asChild>
             <Link href="/stok">Daftar Stok</Link>
           </Button>
