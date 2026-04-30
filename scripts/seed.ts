@@ -31,15 +31,31 @@ async function main() {
   const { default: PurchaseOrder } = await import("../src/models/PurchaseOrder");
   const { default: StockMovement } = await import("../src/models/StockMovement");
   const { default: Counter } = await import("../src/models/Counter");
+  const { default: StoreSettings } = await import("../src/models/StoreSettings");
+  const { default: Customer } = await import("../src/models/Customer");
 
   // Users
   const adminHash = await bcrypt.hash("admin123", 10);
   const kasirHash = await bcrypt.hash("kasir123", 10);
   const [admin, kasir] = await User.insertMany([
-    { name: "Admin Toko", email: "admin@toko.test", passwordHash: adminHash, role: "ADMIN" },
-    { name: "Budi Santoso", email: "kasir@toko.test", passwordHash: kasirHash, role: "KASIR" },
+    { name: "Admin Toko", email: "admin@toko.test", passwordHash: adminHash, role: "ADMIN", active: true },
+    { name: "Budi Santoso", email: "kasir@toko.test", passwordHash: kasirHash, role: "KASIR", active: true },
   ]);
   console.log("✓ Users seeded");
+
+  await StoreSettings.create({
+    _id: "default",
+    defaultTaxPercent: 11,
+    maxDiscountPercentKasir: 15,
+  });
+  console.log("✓ Store settings seeded");
+
+  await Customer.insertMany([
+    { name: "CV Bangun Jaya", phone: "081122334455", address: "Jakarta" },
+    { name: "Pak Haji Rahmat", phone: "081299887766", address: "Bogor" },
+    { name: "PT Mitra Konstruksi", phone: "0217890123", address: "Depok" },
+  ]);
+  console.log("✓ Customers seeded");
 
   // Categories
   const categories = await Category.insertMany([
@@ -156,6 +172,7 @@ async function main() {
       sellPrice: p.sell,
       stock: p.stock,
       minStock: p.min,
+      ...(p.sku === "SEM-001" ? { barcode: "8998866200123" } : {}),
     }))
   );
   console.log(`✓ ${products.length} products seeded`);
@@ -190,8 +207,10 @@ async function main() {
 
     const subtotal = items.reduce((s, i) => s + i.subtotal, 0);
     const discount = i % 5 === 0 ? Math.floor(subtotal * 0.05) : 0;
-    const total = subtotal - discount;
-    const paid = total + (Math.floor(Math.random() * 5) * 1000);
+    const taxableBase = Math.max(0, subtotal - discount);
+    const tax = Math.round((taxableBase * 11) / 100);
+    const total = taxableBase + tax;
+    const paid = total + Math.floor(Math.random() * 5) * 1000;
     const cashier = cashierUsers[i % 2];
 
     const monthKey = `invoice-${createdAt.getFullYear()}-${String(createdAt.getMonth() + 1).padStart(2, "0")}`;
@@ -203,24 +222,29 @@ async function main() {
     const seq = String(counter.seq).padStart(4, "0");
     const invoiceNumber = `INV/${createdAt.getFullYear()}/${String(createdAt.getMonth() + 1).padStart(2, "0")}/${seq}`;
 
-    await SaleOrder.create({
+    const sale = await SaleOrder.create({
       invoiceNumber,
       customer: i % 3 === 0 ? { name: `Pelanggan ${i + 1}`, phone: `0812345678${i}` } : undefined,
       items,
       subtotal,
       discount,
-      tax: 0,
+      tax,
       total,
       paid,
       change: paid - total,
+      paymentStatus: "LUNAS",
+      balanceDue: 0,
+      payments: [],
       cashierId: cashier._id,
       cashierName: cashier.name,
       createdAt,
       updatedAt: createdAt,
     });
 
-    // Stock movements
+    const sid = sale._id;
+
     for (const item of items) {
+      await Product.findByIdAndUpdate(item.productId, { $inc: { stock: -item.qty } });
       await StockMovement.create({
         productId: item.productId,
         productName: item.name,
@@ -228,7 +252,7 @@ async function main() {
         type: "OUT",
         qty: item.qty,
         refType: "SALE",
-        refId: new mongoose.Types.ObjectId(),
+        refId: sid,
         refCode: invoiceNumber,
         createdAt,
       });
@@ -273,17 +297,36 @@ async function main() {
     const total = items.reduce((s, i) => s + i.subtotal, 0);
     const code = `PO/${createdAt.getFullYear()}/${String(createdAt.getMonth() + 1).padStart(2, "0")}/${String(i + 1).padStart(4, "0")}`;
 
-    await PurchaseOrder.create({
+    const doc = await PurchaseOrder.create({
       code,
+      status: "RECEIVED",
       supplierId: po.supplier._id,
       supplierName: po.supplier.name,
       items,
       total,
+      apPaidTotal: 0,
+      apPayments: [],
+      apSettled: false,
       createdById: admin._id,
       createdByName: admin.name,
       createdAt,
       updatedAt: createdAt,
     });
+    const pid = doc._id;
+    for (const item of items) {
+      await Product.findByIdAndUpdate(item.productId, { $inc: { stock: item.qty } });
+      await StockMovement.create({
+        productId: item.productId,
+        productName: item.name,
+        productSku: item.sku,
+        type: "IN",
+        qty: item.qty,
+        refType: "PURCHASE",
+        refId: pid,
+        refCode: code,
+        createdAt,
+      });
+    }
   }
   console.log("✓ 3 purchase orders seeded");
 
