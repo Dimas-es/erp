@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/src/lib/auth";
 import { connectDB } from "@/src/lib/db";
-import SaleOrder from "@/src/models/SaleOrder";
+import PurchaseOrder from "@/src/models/PurchaseOrder";
 import { format } from "date-fns";
 import { getRole } from "@/src/lib/rbac";
 import type { Session } from "next-auth";
@@ -13,7 +13,6 @@ export async function GET(req: NextRequest) {
   }
 
   await connectDB();
-
   const from = req.nextUrl.searchParams.get("from");
   const to = req.nextUrl.searchParams.get("to");
 
@@ -29,32 +28,31 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const orders = await SaleOrder.find(query).sort({ createdAt: -1 }).lean();
+  const orders = await PurchaseOrder.find(query).sort({ createdAt: -1 }).lean();
 
   const rows = [
-    ["No. Invoice", "Tanggal", "Pelanggan", "Kasir", "Subtotal", "Diskon", "Pajak", "Total", "Bayar", "Kembalian"].join(","),
-    ...orders.map((o) =>
-      [
-        o.invoiceNumber,
+    ["Kode PO", "Tanggal", "Supplier", "Total", "Dibayar", "Sisa Hutang", "Status"].join(","),
+    ...orders.map((o) => {
+      const paid = o.apPaidTotal ?? 0;
+      const due = o.total - paid;
+      const status = due <= 0 ? "LUNAS" : "HUTANG";
+      return [
+        o.code,
         format(new Date(o.createdAt), "yyyy-MM-dd HH:mm"),
-        o.customer?.name ?? "Umum",
-        o.cashierName,
-        o.subtotal,
-        o.discount,
-        o.tax,
+        o.supplierName,
         o.total,
-        o.paid,
-        o.change,
-      ].join(",")
-    ),
+        paid,
+        Math.max(0, due),
+        status,
+      ].join(",");
+    }),
   ];
 
   const csv = rows.join("\n");
-
   return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="laporan-penjualan-${format(new Date(), "yyyy-MM-dd")}.csv"`,
+      "Content-Disposition": `attachment; filename="laporan-pembelian-${format(new Date(), "yyyy-MM-dd")}.csv"`,
     },
   });
 }

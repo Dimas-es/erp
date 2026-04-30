@@ -44,14 +44,29 @@ export default async function LaporanPage({
           <h1 className="text-2xl font-bold">Laporan Penjualan</h1>
           <p className="text-muted-foreground">Analisis penjualan berdasarkan periode</p>
         </div>
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" asChild>
           <a
             href={`/api/reports/sales?${sp.from ? `from=${sp.from}&` : ""}${sp.to ? `to=${sp.to}` : ""}`}
-            download={`laporan-penjualan-${format(new Date(), "yyyy-MM-dd")}.csv`}
+            download
           >
-            Export CSV
+            Export penjualan CSV
           </a>
         </Button>
+        <Button variant="outline" size="sm" asChild>
+          <a
+            href={`/api/reports/purchases?${sp.from ? `from=${sp.from}&` : ""}${sp.to ? `to=${sp.to}` : ""}`}
+            download
+          >
+            Export pembelian CSV
+          </a>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <a href="/api/reports/margin" download>
+            Export margin produk CSV
+          </a>
+        </Button>
+      </div>
       </div>
 
       <LaporanFilter defaultFrom={sp.from} defaultTo={sp.to} />
