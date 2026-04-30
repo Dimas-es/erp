@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { connectDB } from "@/src/lib/db";
 import Category from "@/src/models/Category";
 import { CategorySchema } from "@/src/schemas";
-import { requireAuth } from "@/src/lib/rbac";
+import { requireAdmin } from "@/src/lib/rbac";
 
 function slugify(text: string) {
   return text
@@ -16,7 +16,7 @@ function slugify(text: string) {
 }
 
 export async function createCategory(formData: FormData) {
-  await requireAuth();
+  await requireAdmin();
   await connectDB();
 
   const parsed = CategorySchema.safeParse({
@@ -37,7 +37,7 @@ export async function createCategory(formData: FormData) {
 }
 
 export async function updateCategory(id: string, formData: FormData) {
-  await requireAuth();
+  await requireAdmin();
   await connectDB();
 
   const parsed = CategorySchema.safeParse({
@@ -55,7 +55,7 @@ export async function updateCategory(id: string, formData: FormData) {
 }
 
 export async function deleteCategory(id: string) {
-  await requireAuth();
+  await requireAdmin();
   await connectDB();
   await Category.findByIdAndDelete(id);
   revalidatePath("/kategori");

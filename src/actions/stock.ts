@@ -1,10 +1,15 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import mongoose from "mongoose";
 import { connectDB } from "@/src/lib/db";
 import Product from "@/src/models/Product";
 import StockMovement from "@/src/models/StockMovement";
 import "@/src/models/Unit";
 import "@/src/models/Category";
+import { StockAdjustSchema } from "@/src/schemas";
+import { requireAdmin } from "@/src/lib/rbac";
+import { auth } from "@/src/lib/auth";
 
 export async function getStockList(params?: {
   search?: string;
@@ -165,4 +170,82 @@ export async function getDashboardStats() {
       minStock: p.minStock,
     })),
   };
+}
+
+export async function createStockAdjustment(data: unknown) {
+  await requireAdmin();
+  const parsed = StockAdjustSchema.safeParse(data);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  const { productId, qtyDelta, reason, note } = parsed.data;
+  await connectDB();
+
+  const mongoSession = await mongoose.startSession();
+  try {
+    await mongoSession.withTransaction(async () => {
+      const product = await Product.findById(productId).session(mongoSession);
+      if (!product) throw new Error("Produk tidak ditemukan");
+
+      const qty = Math.abs(qtyDelta);
+      if (qtyDelta < 0) {
+        if (product.stock < qty) throw new Error("Stok tidak cukup untuk pengurangan");
+        await Product.findByIdAndUpdate(
+          productId,
+          { $inc: { stock: -qty } },
+          { session: mongoSession }
+        );
+      } else {
+        await Product.findByIdAndUpdate(
+          productId,
+          { $inc: { stock: qty } },
+          { session: mongoSession }
+        );
+      }
+
+      const adjId = new mongoose.Types.ObjectId();
+      const refCode = `ADJ/${reason}/${Date.now()}`;
+      await StockMovement.create(
+        [
+          {
+            productId,
+            productName: product.name,
+            productSku: product.sku,
+            type: qtyDelta > 0 ? "IN" : "OUT",
+            qty,
+            refType: "ADJUST",
+            refId: adjId,
+            refCode,
+            adjustReason: [reason, note].filter(Boolean).join(" — "),
+          },
+        ],
+        { session: mongoSession }
+      );
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Penyesuaian gagal";
+    return { error: msg };
+  } finally {
+    await mongoSession.endSession();
+  }
+
+  const s = await auth();
+  if (s?.user) {
+    const { writeAuditLog } = await import("@/src/lib/audit");
+    await writeAuditLog({
+      actorId: (s.user as { id: string }).id,
+      actorName: s.user.name ?? "",
+      actorEmail: s.user.email ?? "",
+      action: "STOCK_ADJUST",
+      entityType: "Product",
+      entityId: productId,
+      summary: `Penyesuaian stok ${qtyDelta > 0 ? "+" : ""}${qtyDelta}`,
+      metadata: { reason, note },
+    });
+  }
+
+  revalidatePath("/stok");
+  revalidatePath("/");
+  return { success: true };
 }

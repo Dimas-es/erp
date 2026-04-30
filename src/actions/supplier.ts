@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { connectDB } from "@/src/lib/db";
 import Supplier from "@/src/models/Supplier";
 import { SupplierSchema } from "@/src/schemas";
-import { requireAuth } from "@/src/lib/rbac";
+import { requireAdmin } from "@/src/lib/rbac";
 
 export async function createSupplier(formData: FormData) {
-  await requireAuth();
+  await requireAdmin();
   await connectDB();
 
   const parsed = SupplierSchema.safeParse({
@@ -26,7 +26,7 @@ export async function createSupplier(formData: FormData) {
 }
 
 export async function updateSupplier(id: string, formData: FormData) {
-  await requireAuth();
+  await requireAdmin();
   await connectDB();
 
   const parsed = SupplierSchema.safeParse({
@@ -45,7 +45,7 @@ export async function updateSupplier(id: string, formData: FormData) {
 }
 
 export async function deleteSupplier(id: string) {
-  await requireAuth();
+  await requireAdmin();
   await connectDB();
   await Supplier.findByIdAndDelete(id);
   revalidatePath("/supplier");

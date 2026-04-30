@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { connectDB } from "@/src/lib/db";
 import Unit from "@/src/models/Unit";
 import { UnitSchema } from "@/src/schemas";
-import { requireAuth } from "@/src/lib/rbac";
+import { requireAdmin } from "@/src/lib/rbac";
 
 export async function createUnit(formData: FormData) {
-  await requireAuth();
+  await requireAdmin();
   await connectDB();
 
   const parsed = UnitSchema.safeParse({
@@ -25,7 +25,7 @@ export async function createUnit(formData: FormData) {
 }
 
 export async function updateUnit(id: string, formData: FormData) {
-  await requireAuth();
+  await requireAdmin();
   await connectDB();
 
   const parsed = UnitSchema.safeParse({
@@ -43,7 +43,7 @@ export async function updateUnit(id: string, formData: FormData) {
 }
 
 export async function deleteUnit(id: string) {
-  await requireAuth();
+  await requireAdmin();
   await connectDB();
   await Unit.findByIdAndDelete(id);
   revalidatePath("/satuan");
