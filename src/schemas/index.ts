@@ -25,6 +25,7 @@ export const ProductSchema = z.object({
   sellPrice: z.coerce.number().min(0, "Harga jual tidak boleh negatif"),
   stock: z.coerce.number().min(0).default(0),
   minStock: z.coerce.number().min(0).default(5),
+  barcode: z.string().optional().default(""),
 });
 
 export const SaleItemSchema = z.object({
@@ -37,6 +38,7 @@ export const SaleItemSchema = z.object({
 });
 
 export const SaleOrderSchema = z.object({
+  customerId: z.string().optional(),
   customer: z
     .object({
       name: z.string().optional(),
@@ -50,6 +52,14 @@ export const SaleOrderSchema = z.object({
   total: z.coerce.number().min(0),
   paid: z.coerce.number().min(0),
   change: z.coerce.number(),
+  dueDate: z.string().optional(),
+});
+
+export const StockAdjustSchema = z.object({
+  productId: z.string().min(1),
+  qtyDelta: z.coerce.number().refine((n) => n !== 0, "Qty tidak boleh 0"),
+  reason: z.enum(["RUSAK", "HILANG", "INVENTARIS", "LAINNYA"]),
+  note: z.string().max(500).optional(),
 });
 
 export const PurchaseItemSchema = z.object({
@@ -73,3 +83,12 @@ export type SupplierInput = z.infer<typeof SupplierSchema>;
 export type ProductInput = z.infer<typeof ProductSchema>;
 export type SaleOrderInput = z.infer<typeof SaleOrderSchema>;
 export type PurchaseOrderInput = z.infer<typeof PurchaseOrderSchema>;
+export type StockAdjustInput = z.infer<typeof StockAdjustSchema>;
+
+export const CustomerSchema = z.object({
+  name: z.string().min(2),
+  phone: z.string().optional().default(""),
+  address: z.string().optional().default(""),
+  notes: z.string().optional().default(""),
+});
+export type CustomerInput = z.infer<typeof CustomerSchema>;

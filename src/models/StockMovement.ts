@@ -9,6 +9,7 @@ export interface IStockMovement extends Document {
   refType: "SALE" | "PURCHASE" | "ADJUST";
   refId: Types.ObjectId;
   refCode: string;
+  adjustReason?: string;
   createdAt: Date;
 }
 
@@ -22,6 +23,7 @@ const StockMovementSchema = new Schema<IStockMovement>(
     refType: { type: String, enum: ["SALE", "PURCHASE", "ADJUST"], required: true },
     refId: { type: Schema.Types.ObjectId, required: true },
     refCode: { type: String, required: true },
+    adjustReason: { type: String },
   },
   { timestamps: true }
 );

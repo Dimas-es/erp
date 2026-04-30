@@ -9,6 +9,7 @@ export interface IProduct extends Document {
   sellPrice: number;
   stock: number;
   minStock: number;
+  barcode?: string;
   image?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -24,12 +25,13 @@ const ProductSchema = new Schema<IProduct>(
     sellPrice: { type: Number, required: true, min: 0 },
     stock: { type: Number, default: 0 },
     minStock: { type: Number, default: 5 },
+    barcode: { type: String, sparse: true },
     image: { type: String },
   },
   { timestamps: true }
 );
 
-ProductSchema.index({ name: "text", sku: "text" });
+ProductSchema.index({ name: "text", sku: "text", barcode: "text" });
 ProductSchema.index({ stock: 1 });
 
 const Product: Model<IProduct> =
