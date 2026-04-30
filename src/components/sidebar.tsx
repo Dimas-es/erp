@@ -13,6 +13,13 @@ import {
   Warehouse,
   Receipt,
   HardHat,
+  Users,
+  Wallet,
+  Scale,
+  Settings,
+  ScrollText,
+  CreditCard,
+  Contact,
 } from "lucide-react";
 import { cn } from "@/src/lib/utils";
 
@@ -30,6 +37,9 @@ const navGroups = [
       { href: "/invoice", label: "Invoice", icon: Receipt, adminOnly: false },
       { href: "/pembelian", label: "Pembelian", icon: Truck, adminOnly: true },
       { href: "/stok", label: "Stok", icon: Warehouse, adminOnly: false },
+      { href: "/piutang", label: "Piutang", icon: Scale, adminOnly: true },
+      { href: "/hutang", label: "Hutang Supplier", icon: Wallet, adminOnly: true },
+      { href: "/kas", label: "Kas & Shift", icon: CreditCard, adminOnly: false },
     ],
   },
   {
@@ -40,6 +50,16 @@ const navGroups = [
       { href: "/kategori", label: "Kategori", icon: Tag, adminOnly: true },
       { href: "/satuan", label: "Satuan", icon: Ruler, adminOnly: true },
       { href: "/supplier", label: "Supplier", icon: Truck, adminOnly: true },
+      { href: "/pelanggan", label: "Pelanggan", icon: Contact, adminOnly: true },
+    ],
+  },
+  {
+    label: "Pengaturan",
+    adminOnly: true,
+    items: [
+      { href: "/pengaturan/toko", label: "Pajak & Diskon", icon: Settings, adminOnly: true },
+      { href: "/pengaturan/pengguna", label: "Pengguna", icon: Users, adminOnly: true },
+      { href: "/pengaturan/audit", label: "Log Audit", icon: ScrollText, adminOnly: true },
     ],
   },
   {

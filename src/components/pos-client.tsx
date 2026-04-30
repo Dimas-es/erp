@@ -63,7 +63,19 @@ function getCategoryColor(category?: string): string {
 
 const QUICK_AMOUNTS = [50_000, 100_000, 200_000, 500_000];
 
-export function POSClient() {
+interface POSClientProps {
+  defaultTaxPercent: number;
+  maxDiscountPercentKasir: number;
+  userRole: "ADMIN" | "KASIR";
+  needsOpenShift: boolean;
+}
+
+export function POSClient({
+  defaultTaxPercent,
+  maxDiscountPercentKasir,
+  userRole,
+  needsOpenShift,
+}: POSClientProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -72,6 +84,14 @@ export function POSClient() {
   const [discount, setDiscount] = useState(0);
   const [paid, setPaid] = useState<number | "">("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [creditMode, setCreditMode] = useState(false);
+  const [customerId, setCustomerId] = useState<string>("");
+  const [custQuery, setCustQuery] = useState("");
+  const { data: customerHits = [] } = useSWR<{ _id: string; name: string; phone: string }[]>(
+    custQuery.length >= 2 ? `/api/customers/search?q=${encodeURIComponent(custQuery)}` : null,
+    fetcher,
+    { dedupingInterval: 400 }
+  );
   const [mobileTab, setMobileTab] = useState<"products" | "cart">("products");
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -131,18 +151,32 @@ export function POSClient() {
     setCart((prev) => prev.filter((i) => i._id !== id));
 
   const subtotal = cart.reduce((sum, i) => sum + i.subtotal, 0);
-  const total = Math.max(0, subtotal - discount);
+  const taxableBase = Math.max(0, subtotal - discount);
+  const tax = Math.round((taxableBase * defaultTaxPercent) / 100);
+  const total = taxableBase + tax;
+  const maxDiscRp =
+    userRole === "KASIR" ? subtotal * (maxDiscountPercentKasir / 100) : Infinity;
   const change = typeof paid === "number" ? paid - total : 0;
 
   const handleSubmit = async () => {
     if (cart.length === 0) return toast.error("Keranjang kosong");
-    if (typeof paid !== "number" || paid < total) {
-      return toast.error("Jumlah bayar kurang");
+    if (userRole === "KASIR" && discount > maxDiscRp + 1e-9) {
+      return toast.error(`Diskon melebihi batas ${maxDiscountPercentKasir}%`);
+    }
+    if (needsOpenShift) {
+      return toast.error("Buka shift kasir di menu Kas & Shift");
+    }
+    if (typeof paid !== "number" || paid < 0) {
+      return toast.error("Jumlah bayar tidak valid");
+    }
+    if (!creditMode && paid < total) {
+      return toast.error("Jumlah bayar kurang (aktifkan penjualan kredit atau naikkan bayar)");
     }
 
     setIsSubmitting(true);
     try {
       const result = await createSale({
+        customerId: customerId || undefined,
         customer: customerName ? { name: customerName, phone: customerPhone } : undefined,
         items: cart.map((i) => ({
           productId: i._id,
@@ -154,10 +188,10 @@ export function POSClient() {
         })),
         subtotal,
         discount,
-        tax: 0,
+        tax,
         total,
         paid,
-        change,
+        change: creditMode && paid < total ? 0 : Math.max(0, change),
       });
 
       if (result.error) {
@@ -173,6 +207,22 @@ export function POSClient() {
 
   return (
     <div className="flex flex-col h-full gap-4 min-h-0">
+      {needsOpenShift && (
+        <div
+          className="rounded-lg border px-4 py-3 text-sm shrink-0"
+          style={{
+            background: "hsl(38 100% 95%)",
+            borderColor: "hsl(38 80% 60%)",
+            color: "hsl(32 70% 28%)",
+          }}
+        >
+          <strong>Shift belum dibuka.</strong> Buka shift di{" "}
+          <a href="/kas" className="underline font-semibold">
+            Kas & Shift
+          </a>{" "}
+          sebelum berjualan.
+        </div>
+      )}
       {/* Mobile Tab Switcher */}
       <div className="flex md:hidden border rounded-xl overflow-hidden shrink-0">
         <button
@@ -392,6 +442,14 @@ export function POSClient() {
 
           {/* Sticky total bar */}
           {cart.length > 0 && (
+            <div className="border-t px-4 py-2 text-xs space-y-1">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Pajak ({defaultTaxPercent}%)</span>
+                <span className="tabular-nums">{formatRupiah(tax)}</span>
+              </div>
+            </div>
+          )}
+          {cart.length > 0 && (
             <div
               className="border-t px-4 py-3 flex items-center justify-between"
               style={{
@@ -411,7 +469,47 @@ export function POSClient() {
         <div className="rounded-xl border bg-card p-4 space-y-3 shrink-0">
           {/* Customer */}
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Pelanggan (opsional)</Label>
+            <Label className="text-xs text-muted-foreground">Cari pelanggan tercatat</Label>
+            <Input
+              placeholder="Ketik nama / telepon..."
+              value={custQuery}
+              onChange={(e) => setCustQuery(e.target.value)}
+              className="h-8 text-sm"
+            />
+            {customerHits.length > 0 && custQuery.length >= 2 && (
+              <div className="max-h-28 overflow-y-auto rounded border bg-background text-xs">
+                {customerHits.map((c) => (
+                  <button
+                    key={c._id}
+                    type="button"
+                    className="w-full text-left px-2 py-1.5 hover:bg-muted block"
+                    onClick={() => {
+                      setCustomerId(c._id);
+                      setCustomerName(c.name);
+                      setCustomerPhone(c.phone ?? "");
+                      setCustQuery("");
+                    }}
+                  >
+                    {c.name}
+                    {c.phone ? ` · ${c.phone}` : ""}
+                  </button>
+                ))}
+              </div>
+            )}
+            {customerId && (
+              <button
+                type="button"
+                className="text-xs text-primary underline"
+                onClick={() => {
+                  setCustomerId("");
+                  setCustomerName("");
+                  setCustomerPhone("");
+                }}
+              >
+                Hapus pilihan pelanggan
+              </button>
+            )}
+            <Label className="text-xs text-muted-foreground">Atau isi manual</Label>
             <Input
               placeholder="Nama pelanggan..."
               value={customerName}
@@ -446,7 +544,34 @@ export function POSClient() {
                 placeholder="0"
               />
             </div>
+            {userRole === "KASIR" && subtotal > 0 && (
+              <p className="text-[10px] text-muted-foreground">
+                Maks diskon kasir: {formatRupiah(maxDiscRp)} ({maxDiscountPercentKasir}%)
+              </p>
+            )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Pajak ({defaultTaxPercent}%)</span>
+              <span className="tabular-nums">{formatRupiah(tax)}</span>
+            </div>
+            <div className="flex justify-between font-medium">
+              <span>Total tagihan</span>
+              <span className="tabular-nums">{formatRupiah(total)}</span>
+            </div>
           </div>
+
+          <Separator />
+
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={creditMode}
+              onChange={(e) => {
+                setCreditMode(e.target.checked);
+                if (!e.target.checked) setPaid("");
+              }}
+            />
+            <span>Penjualan kredit (bayar di bawah total)</span>
+          </label>
 
           <Separator />
 
@@ -455,7 +580,7 @@ export function POSClient() {
             <Label className="text-xs text-muted-foreground">Jumlah Bayar (Rp)</Label>
             <Input
               type="number"
-              min={total}
+              min={0}
               value={paid}
               onChange={(e) => setPaid(e.target.value ? Number(e.target.value) : "")}
               className="text-right font-semibold tabular-nums"

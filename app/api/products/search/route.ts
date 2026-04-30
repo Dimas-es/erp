@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     query.$or = [
       { name: { $regex: q, $options: "i" } },
       { sku: { $regex: q, $options: "i" } },
+      { barcode: { $regex: q, $options: "i" } },
     ];
   }
 
